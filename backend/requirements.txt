@@ -8,6 +8,6 @@ smithy-aws-core==0.0.1
 websockets>=15.0.1
 requests
 mcp>=1.0.0
-fastmcp>=2.0.0
+fastmcp==2.10.1
 pydantic>=2.0.0
 dotenv
