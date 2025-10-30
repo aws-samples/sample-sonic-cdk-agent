@@ -27,27 +27,20 @@ is_running_in_ecs() {
   fi
 }
 
-# Function to refresh credentials
-refresh_credentials() {
-  # Get credentials from ECS container metadata endpoint
-  CREDS=$(curl -s 169.254.170.2$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)
-
-  # Extract credentials and set as environment variables
-  export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.AccessKeyId')
-  export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.SecretAccessKey')
-  export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Token')
+# Function to set AWS region for ECS
+set_aws_region() {
   export AWS_REGION=$(curl -s 169.254.169.254/latest/meta-data/placement/region || echo "us-east-1")
-
-  echo "AWS credentials refreshed at $(date)"
+  echo "AWS region set to: $AWS_REGION"
 }
 
 env
 
-# Check if running in ECS and refresh credentials if so
+# Check if running in ECS and set region if so
 if is_running_in_ecs; then
-  refresh_credentials
+  set_aws_region
+  echo "ECS environment detected - ContainerCredentialsResolver will handle credentials"
 else
-  echo "Skipping credential refresh - not in ECS environment"
+  echo "Local environment - using standard AWS credential chain"
 fi
 
 if [ "$DEV_MODE" = "true" ]; then

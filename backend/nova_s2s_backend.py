@@ -33,14 +33,11 @@ from aws_sdk_bedrock_runtime.models import (
     InvokeModelWithBidirectionalStreamInputChunk,
     BidirectionalInputPayloadPart,
 )
-from aws_sdk_bedrock_runtime.config import (
-    Config,
-    HTTPAuthSchemeResolver,
-    SigV4AuthScheme,
-)
-from smithy_aws_core.credentials_resolvers.environment import (
-    EnvironmentCredentialsResolver,
-)
+from aws_sdk_bedrock_runtime.config import Config
+from smithy_aws_core.auth.sigv4 import SigV4AuthScheme
+from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
+from smithy_aws_core.identity.container import ContainerCredentialsResolver
+from smithy_http.aio.aiohttp import AIOHTTPClient, AIOHTTPClientConfig
 
 from mcp_server import get_bedrock_tool_specs, handle_bedrock_tool_call, start_mcp_server, mcp_server
 import tools.mcp_tool_registry
@@ -85,19 +82,42 @@ class BedrockStreamManager:
 
     def _initialize_client(self):
         """Initialize the Bedrock client."""
-        config = Config(
-            endpoint_uri=f"https://bedrock-runtime.{self.region}.amazonaws.com",
-            region=self.region,
-            aws_credentials_identity_resolver=EnvironmentCredentialsResolver(),
-            http_auth_scheme_resolver=HTTPAuthSchemeResolver(),
-            http_auth_schemes={"aws.auth#sigv4": SigV4AuthScheme()},
-        )
-        self.bedrock_client = BedrockRuntimeClient(config=config)
+        
+        if self.bedrock_client is not None:
+            return True
+            
+        logger.info(f"Initializing Bedrock client for region {self.region}")
+        
+        try:
+            # if running locally, use environment creds resolver. If running in ECS, use container creds resolver
+            resolver = EnvironmentCredentialsResolver()
+            uri = os.environ.get('AWS_CONTAINER_CREDENTIALS_RELATIVE_URI', "")
+            
+            if len(uri) > 0:
+                logger.info("Initializes Bedrock client with ContainerCredentialsResolver")
+                client_config = AIOHTTPClientConfig()
+                http_client = AIOHTTPClient(client_config=client_config)
+                resolver = ContainerCredentialsResolver(http_client)
+            
+            config = Config(
+                endpoint_uri=f"https://bedrock-runtime.{self.region}.amazonaws.com",
+                region=self.region,
+                aws_credentials_identity_resolver=resolver,
+                auth_schemes={"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
+            )
+            self.bedrock_client = BedrockRuntimeClient(config=config)
+            logger.info(f"Bedrock client initialized successfully with {type(resolver).__name__}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Bedrock client: {str(e)}", exc_info=True)
+            return False
 
     async def initialize_stream(self):
         """Initialize the bidirectional stream with Bedrock."""
         if not self.bedrock_client:
-            self._initialize_client()
+            if not self._initialize_client():
+                raise Exception("Failed to initialize Bedrock client")
 
         try:
             self.stream_response = (

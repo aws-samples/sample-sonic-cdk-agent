@@ -20,6 +20,7 @@ import os
 import sys
 from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
 from dotenv import load_dotenv
+from .aws_utils import create_boto3_resource
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -64,8 +65,8 @@ def lookup_phone_number(phone_number: str):
     try:
         table_name = get_dynamodb_table_name()
 
-        # Create the boto3 client with explicit credentials
-        dynamodb = boto3.resource("dynamodb")
+        # Create the boto3 resource with automatic region detection
+        dynamodb = create_boto3_resource("dynamodb")
 
         # Get the table
         table = dynamodb.Table(table_name)
